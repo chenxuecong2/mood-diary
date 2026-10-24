@@ -1,0 +1,353 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+<template>
+  <div class="page">
+    <div class="form" if="{{hide}}">
+      <div class="head">
+        <div class="back" onclick="goBack">
+          <text class="back-icon">‹</text>
+        </div>
+        <text class="title">添加心情</text>
+      </div>
+
+      <div class="ask-row" onclick="cycleMood">
+        <text class="ask">你感觉今天如何?</text>
+        <image class="face" src="{{moodImg}}"></image>
+      </div>
+      <text class="mood-name">{{moodLabel}}</text>
+
+      <!-- 日期：左右步进，点中间回到今天，不依赖 picker 组件 -->
+      <div class="date-row">
+        <div class="date-btn" onclick="prevDate">
+          <text class="date-arrow">‹</text>
+        </div>
+        <text class="date-text" onclick="resetDate">{{dateText}}</text>
+        <div class="date-btn" onclick="nextDate">
+          <text class="date-arrow">›</text>
+        </div>
+      </div>
+
+      <div class="phrase" onclick="openKeyboard">
+        <text class="phrase-text {{note ? 'phrase-on' : ''}}">{{note || '说说心里话'}}</text>
+        <div class="underline"></div>
+      </div>
+    </div>
+
+    <div class="typing" if="{{!hide}}">
+      <text class="typing-text {{note ? 'typing-on' : ''}}">{{note || '说说心里话'}}</text>
+      <text class="typing-done" onclick="closeKeyboard">完成</text>
+    </div>
+
+    <div class="actions" if="{{hide}}">
+      <div class="btn btn-cancel" onclick="goBack">
+        <text class="btn-cancel-text">取消</text>
+      </div>
+      <div class="btn btn-save" onclick="save">
+        <text class="btn-save-text">保存</text>
+      </div>
+    </div>
+
+    <input-method
+      hide="{{hide}}"
+      keyboardtype="{{keyboardtype}}"
+      screentype="{{screentype}}"
+      vibratemode="{{vibratemode}}"
+      @complete="onComplete"
+      @delete="onDelete"
+    ></input-method>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import prompt from '@system.prompt';
+import { MOODS, dateKey, shiftKey, prettyDate, addEntry } from '../../common/mood';
+
+const MAX_LEN = 30;
+// 可回填的天数范围：往前 30 天、往后 7 天
+const DAYS_BACK = 30;
+const DAYS_FORWARD = 7;
+
+export default {
+  data: {
+    moodImg: MOODS[0].img,
+    moodLabel: MOODS[0].label,
+    score: MOODS[0].score,
+    note: '',
+    // 选中的日期
+    pickedDate: '',
+    dateText: '',
+    minDate: '',
+    maxDate: '',
+    inited: false,
+    saving: false,
+    // 键盘：rect 对应方形屏
+    hide: true,
+    keyboardtype: 'QWERTY',
+    screentype: 'rect',
+    vibratemode: 'short'
+  },
+
+  onShow() {
+    // 亮屏会重触发 onShow，已初始化就不再重置用户选的日期
+    if (this.inited) {
+      return;
+    }
+    this.inited = true;
+    const today = dateKey();
+    this.minDate = shiftKey(today, -DAYS_BACK);
+    this.maxDate = shiftKey(today, DAYS_FORWARD);
+    this.pickedDate = today;
+    this.dateText = prettyDate(today);
+  },
+
+  stepDate(delta) {
+    const next = shiftKey(this.pickedDate, delta);
+    if (next < this.minDate || next > this.maxDate) {
+      prompt.showToast({ message: '超出可选范围', duration: 1000 });
+      return;
+    }
+    this.pickedDate = next;
+    this.dateText = prettyDate(next);
+  },
+
+  prevDate() {
+    this.stepDate(-1);
+  },
+
+  nextDate() {
+    this.stepDate(1);
+  },
+
+  // 点日期回到今天
+  resetDate() {
+    this.pickedDate = dateKey();
+    this.dateText = prettyDate(this.pickedDate);
+  },
+
+  // 开心 → 平静 → 生气 → 开心
+  cycleMood() {
+    const index = MOODS.findIndex((m) => m.score === this.score);
+    const mood = MOODS[(index + 1) % MOODS.length];
+    this.score = mood.score;
+    this.moodImg = mood.img;
+    this.moodLabel = mood.label;
+  },
+
+  openKeyboard() {
+    this.hide = false;
+  },
+
+  closeKeyboard() {
+    this.hide = true;
+  },
+
+  // 中文按下候选词时触发，英文与按键同时触发
+  onComplete(event) {
+    const extra = event && event.detail && event.detail.content ? event.detail.content : '';
+    this.note = (this.note + extra).slice(0, MAX_LEN);
+  },
+
+  onDelete() {
+    this.note = this.note.slice(0, -1);
+  },
+
+  // saving 防止连续点击写两条，存储失败时给出提示而不是静默成功
+  save() {
+    if (this.saving) {
+      return;
+    }
+    this.saving = true;
+    addEntry({ date: this.pickedDate, score: this.score, note: this.note }, (ok) => {
+      if (!ok) {
+        this.saving = false;
+        prompt.showToast({ message: '保存失败，请重试', duration: 1500 });
+        return;
+      }
+      prompt.showToast({ message: this.moodLabel + '，已记录', duration: 1200 });
+      router.back();
+    });
+  },
+
+  goBack() {
+    router.back();
+  }
+};
+</script>
+
+<style>
+  .page {
+    width: 100%;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-left: 40px;
+    padding-right: 40px;
+    padding-top: 28px;
+    padding-bottom: 24px;
+    background-color: #000000;
+  }
+
+  .form {
+    flex-direction: column;
+  }
+
+  .head {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  /* 返回键：三个页面同一尺寸、同一配色 */
+  .back {
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a2530;
+    margin-right: 16px;
+  }
+
+  .back-icon {
+    font-size: 40px;
+    color: #ffffff;
+    line-height: 40px;
+  }
+
+  .title {
+    font-size: 32px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .ask-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 28px;
+  }
+
+  .ask {
+    font-size: 30px;
+    color: #ffffff;
+  }
+
+  .face {
+    width: 78px;
+    height: 78px;
+  }
+
+  .mood-name {
+    font-size: 20px;
+    color: #edc14a;
+    text-align: right;
+    margin-top: 4px;
+  }
+
+  .date-row {
+    height: 52px;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 12px;
+  }
+
+  .date-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 26px;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a2530;
+  }
+
+  .date-arrow {
+    font-size: 34px;
+    color: #ffffff;
+    line-height: 38px;
+  }
+
+  .date-text {
+    flex: 1;
+    font-size: 26px;
+    color: #edc14a;
+    text-align: center;
+  }
+
+  .phrase {
+    flex-direction: column;
+    margin-top: 30px;
+  }
+
+  .phrase-text {
+    font-size: 26px;
+    color: #8a8a8a;
+    lines: 1;
+    text-overflow: ellipsis;
+  }
+
+  .phrase-on {
+    color: #ffffff;
+  }
+
+  .underline {
+    height: 3px;
+    border-radius: 2px;
+    background-color: #14c8b4;
+    margin-top: 8px;
+  }
+
+  .typing {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .typing-text {
+    flex: 1;
+    font-size: 28px;
+    color: #8a8a8a;
+    lines: 1;
+    text-overflow: ellipsis;
+    margin-right: 16px;
+  }
+
+  .typing-on {
+    color: #ffffff;
+  }
+
+  .typing-done {
+    font-size: 26px;
+    color: #14c8b4;
+  }
+
+  .actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .btn {
+    flex: 1;
+    height: 78px;
+    border-radius: 39px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-cancel {
+    background-color: #333333;
+  }
+
+  .btn-save {
+    background-color: #f5c842;
+    margin-left: 16px;
+  }
+
+  .btn-cancel-text {
+    font-size: 28px;
+    color: #e8e8e8;
+  }
+
+  .btn-save-text {
+    font-size: 28px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+</style>

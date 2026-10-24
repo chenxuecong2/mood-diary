@@ -1,0 +1,223 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <div class="back" onclick="goBack">
+        <text class="back-icon">‹</text>
+      </div>
+      <text class="title">心情详情</text>
+    </div>
+
+    <div class="body" if="{{found}}">
+      <image class="face" src="{{img}}"></image>
+      <text class="mood-label">{{moodLabel}}</text>
+      <text class="date">{{dateText}}</text>
+
+      <div class="note-box" if="{{note}}">
+        <text class="note">{{note}}</text>
+      </div>
+      <text class="note-empty" if="{{!note}}">这次没有写心里话</text>
+    </div>
+
+    <text class="empty" if="{{!found}}">这条记录不存在了</text>
+
+    <div class="footer" if="{{found}}">
+      <div class="delete" onclick="remove">
+        <text class="delete-text {{confirmDelete ? 'delete-armed' : ''}}">{{confirmDelete ? '再点一次确认删除' : '删除这条'}}</text>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import prompt from '@system.prompt';
+import { loadEntries, deleteEntry, moodOf, prettyDate } from '../../common/mood';
+
+export default {
+  private: {
+    img: '',
+    moodLabel: '',
+    dateText: '',
+    note: '',
+    found: false,
+    confirmDelete: false,
+    disarmTimer: null
+  },
+
+  protected: {
+    id: ''
+  },
+
+  onShow() {
+    this.load();
+  },
+
+  onDestroy() {
+    clearTimeout(this.disarmTimer);
+  },
+
+  load() {
+    this.confirmDelete = false;
+    loadEntries((list) => {
+      const entry = list.find((item) => '' + item.id === '' + this.id);
+      if (!entry) {
+        this.found = false;
+        return;
+      }
+      const mood = moodOf(entry.score);
+      this.found = true;
+      this.img = mood.img;
+      this.moodLabel = mood.label;
+      this.dateText = prettyDate(entry.date);
+      this.note = entry.note || '';
+    });
+  },
+
+  // 二次确认带 3 秒时限：手滑点过一次、过很久再点一下不会直接删掉这条记录
+  remove() {
+    if (!this.confirmDelete) {
+      this.confirmDelete = true;
+      prompt.showToast({ message: '再点一次即删除', duration: 1500 });
+      this.disarmTimer = setTimeout(() => {
+        this.confirmDelete = false;
+        this.disarmTimer = null;
+      }, 3000);
+      return;
+    }
+    clearTimeout(this.disarmTimer);
+    this.disarmTimer = null;
+    deleteEntry(this.id, (ok) => {
+      if (!ok) {
+        this.confirmDelete = false;
+        prompt.showToast({ message: '删除失败，请重试', duration: 1500 });
+        return;
+      }
+      prompt.showToast({ message: '已删除', duration: 1200 });
+      router.back();
+    });
+  },
+
+  goBack() {
+    router.back();
+  }
+};
+</script>
+
+<style>
+  .page {
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-left: 40px;
+    padding-right: 40px;
+    padding-top: 26px;
+    padding-bottom: 22px;
+    background-color: #000000;
+  }
+
+  .header {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  /* 返回键：三个页面同一尺寸、同一配色 */
+  .back {
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a2530;
+    margin-right: 16px;
+  }
+
+  .back-icon {
+    font-size: 40px;
+    color: #ffffff;
+    line-height: 40px;
+  }
+
+  .title {
+    font-size: 30px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .face {
+    width: 96px;
+    height: 96px;
+  }
+
+  .mood-label {
+    font-size: 26px;
+    color: #ffffff;
+    font-weight: bold;
+    margin-top: 6px;
+  }
+
+  .date {
+    font-size: 20px;
+    color: #edc14a;
+    margin-top: 4px;
+  }
+
+  .note-box {
+    width: 100%;
+    border-radius: 20px;
+    background-color: #1a2530;
+    padding-left: 22px;
+    padding-right: 22px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    margin-top: 20px;
+  }
+
+  .note {
+    font-size: 24px;
+    color: #e6eef6;
+    line-height: 34px;
+  }
+
+  .note-empty {
+    font-size: 20px;
+    color: #4d5b68;
+    margin-top: 22px;
+  }
+
+  .empty {
+    font-size: 20px;
+    color: #4d5b68;
+    text-align: center;
+    margin-top: 80px;
+  }
+
+  .footer {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .delete {
+    height: 60px;
+    padding-left: 34px;
+    padding-right: 34px;
+    border-radius: 30px;
+    align-items: center;
+    justify-content: center;
+    background-color: #1e2b38;
+  }
+
+  .delete-text {
+    font-size: 22px;
+    color: #8496a6;
+  }
+
+  .delete-armed {
+    color: #e2695c;
+  }
+</style>

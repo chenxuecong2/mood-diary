@@ -1,0 +1,19 @@
+{
+  "name": "心情日记",
+  "version": "1.0.0",
+  "description": "",
+  "engines": {
+    "node": ">=8.10"
+  },
+  "scripts": {
+    "start": "aiot start --watch",
+    "build": "aiot build --enable-image-png8 --optimize-css-attr",
+    "build:fast": "aiot build",
+    "release": "aiot release --enable-image-png8 --optimize-css-attr",
+    "lint": "eslint --format codeframe --fix --ext .ux,.js src/"
+  },
+  "devDependencies": {
+    "@aiot-toolkit/jsc": "^1.0.3",
+    "aiot-toolkit": "^2.0.5"
+  }
+}

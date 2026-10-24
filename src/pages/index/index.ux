@@ -1,0 +1,363 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <div class="back" onclick="exitApp">
+        <text class="back-icon">‹</text>
+      </div>
+      <div class="head-center">
+        <text class="app-title">心情日记</text>
+        <text class="month">{{monthText}}</text>
+      </div>
+      <div class="head-gap"></div>
+    </div>
+
+    <div class="sums" if="{{sums.length > 0}}" style="{{sumStyle}}">
+      <div class="sum" for="{{sum in sums}}">
+        <div class="sum-head">
+          <text class="sum-title">{{sum.headText}}</text>
+          <text class="sum-counts">{{sum.countsText}}</text>
+        </div>
+        <div class="sum-bar">
+          <div class="sum-seg" for="{{seg in sum.segs}}" style="{{seg.style}}"></div>
+        </div>
+      </div>
+    </div>
+
+    <list class="list" if="{{entries.length > 0}}" style="{{listStyle}}">
+      <list-item class="row" type="moodRow" for="{{row in rows}}">
+        <div class="cell" for="{{cell in row}}" onclick="openDetail(cell.id)">
+          <image class="cell-face" src="{{cell.img}}"></image>
+          <text class="cell-date">{{cell.dateText}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div class="empty-wrap" if="{{entries.length === 0}}" style="{{listStyle}}">
+      <text class="empty">还没有记录，点下面添加</text>
+    </div>
+
+    <div class="footer">
+      <div class="add-btn" onclick="goAdd">
+        <text class="add-btn-text">添加心情</text>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import device from '@system.device';
+import app from '@system.app';
+import {
+  dateKey,
+  monthText,
+  loadEntries,
+  moodOf,
+  shortDate,
+  weekdayOf,
+  dayOfMonth,
+  lastWeekRange,
+  lastMonthRange,
+  rangeSummary
+} from '../../common/mood';
+
+// designWidth 对应 466；页头页脚固定，中间高度按真实屏幕比例算
+const DESIGN_WIDTH = 466;
+const HEADER_H = 96;
+const FOOTER_H = 112;
+const SUM_CARD_H = 58;
+const COLUMNS = 5;
+const MIN_MID_H = 120;
+
+export default {
+  data: {
+    monthText: '',
+    entries: [],
+    rows: [],
+    sums: [],
+    listStyle: 'height: 250px;',
+    sumStyle: 'height: 0px;',
+    designHeight: 0,
+    sized: false,
+    // 上次渲染的数据指纹：没变化就不重建列表，从详情页返回时不会滚回顶部
+    signature: ''
+  },
+
+  onShow() {
+    this.applyScreenSize();
+    this.refresh();
+  },
+
+  // 各设备屏幕比例不同（336x480 / 432x514 / 466x466…），必须按实际比例算高度
+  applyScreenSize() {
+    if (this.sized) {
+      return;
+    }
+    this.sized = true;
+    device.getInfo({
+      success: (info) => {
+        const width = info && info.screenWidth ? info.screenWidth : 0;
+        const height = info && info.screenHeight ? info.screenHeight : 0;
+        // 只用高宽比，不依赖返回值是物理像素还是设计单位
+        const ratio = width > 0 && height > 0 ? height / width : 1;
+        this.designHeight = Math.round(DESIGN_WIDTH * ratio);
+        this.layout();
+      },
+      // 取不到设备信息时退回 designWidth 方屏，避免列表高度一直停在初始值
+      fail: () => {
+        this.layout();
+      }
+    });
+  },
+
+  layout() {
+    const total = this.designHeight || DESIGN_WIDTH;
+    const sumH = this.sums.length * SUM_CARD_H;
+    const mid = Math.max(MIN_MID_H, total - HEADER_H - FOOTER_H - sumH);
+    this.sumStyle = 'height: ' + sumH + 'px;';
+    this.listStyle = 'height: ' + mid + 'px;';
+  },
+
+  refresh() {
+    const key = dateKey();
+    this.monthText = monthText(key);
+    loadEntries((list) => {
+      const signature = this.signOf(list, key);
+      if (signature === this.signature) {
+        return;
+      }
+      this.signature = signature;
+      this.entries = list.map((item) => ({
+        id: item.id,
+        img: moodOf(item.score).img,
+        dateText: shortDate(item.date)
+      }));
+      this.rows = this.chunk(this.entries);
+      this.sums = this.buildSummaries(list, key);
+      this.layout();
+    });
+  },
+
+  // 增删都会改变条数；带上今天日期，跨零点后回顾条也会跟着重算
+  signOf(list, key) {
+    const first = list.length ? list[0].id : '';
+    const last = list.length ? list[list.length - 1].id : '';
+    return [key, list.length, first, last].join('|');
+  },
+
+  // 每行固定 5 格，不足的用透明图补齐：结构一致，又不会出现空 src 的占位图标
+  chunk(list) {
+    const rows = [];
+    for (let i = 0; i < list.length; i += COLUMNS) {
+      const row = list.slice(i, i + COLUMNS);
+      while (row.length < COLUMNS) {
+        row.push({ id: 0, img: '/common/blank.png', dateText: '' });
+      }
+      rows.push(row);
+    }
+    return rows;
+  },
+
+  // 周一回顾上周，每月1号回顾上月
+  buildSummaries(list, key) {
+    const result = [];
+    if (weekdayOf(key) === '周一') {
+      result.push(this.buildSum('上周', rangeSummary(list, lastWeekRange(key))));
+    }
+    if (dayOfMonth(key) === 1) {
+      result.push(this.buildSum('上月', rangeSummary(list, lastMonthRange(key))));
+    }
+    return result;
+  },
+
+  buildSum(title, stat) {
+    const hit = stat.counts.filter((item) => item.count > 0);
+    return {
+      headText: stat.total > 0
+        ? title + ' · ' + stat.total + ' 次 · 均 ' + stat.avg
+        : title + ' · 没有记录',
+      countsText: hit.map((item) => item.label + ' ' + item.count).join('  '),
+      segs: hit.map((item) => ({ style: item.barStyle }))
+    };
+  },
+
+  openDetail(id) {
+    if (!id) {
+      return;
+    }
+    router.push({ uri: '/pages/detail', params: { id: '' + id } });
+  },
+
+  // 首页是入口页，没有上一页可回：这颗键直接退出应用，回系统桌面
+  exitApp() {
+    app.terminate();
+  },
+
+  goAdd() {
+    router.push({ uri: '/pages/add' });
+  }
+};
+</script>
+
+<style>
+  .page {
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    background-color: #000000;
+  }
+
+  .header {
+    height: 96px;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  /* 返回键：三个页面同一尺寸、同一配色 */
+  .back {
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a2530;
+  }
+
+  .back-icon {
+    font-size: 40px;
+    color: #ffffff;
+    line-height: 40px;
+  }
+
+  /* 两侧各留 64px，标题与月份才能落在屏幕正中 */
+  .head-center {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .head-gap {
+    width: 64px;
+  }
+
+  .app-title {
+    font-size: 30px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .month {
+    font-size: 22px;
+    color: #8496a6;
+    margin-top: 4px;
+  }
+
+  .sums {
+    flex-direction: column;
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  .sum {
+    height: 58px;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .sum-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sum-title {
+    font-size: 20px;
+    color: #edc14a;
+  }
+
+  .sum-counts {
+    font-size: 15px;
+    color: #8496a6;
+  }
+
+  .sum-bar {
+    flex-direction: row;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: #1e2b38;
+    margin-top: 6px;
+  }
+
+  .sum-seg {
+    height: 12px;
+  }
+
+  .list {
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  .row {
+    height: 104px;
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+
+  .cell {
+    width: 76px;
+    height: 104px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cell-face {
+    width: 60px;
+    height: 60px;
+  }
+
+  .cell-date {
+    font-size: 14px;
+    color: #8496a6;
+    margin-top: 6px;
+    lines: 1;
+  }
+
+  /* 与列表区等高，居中后文字落在屏幕正中 */
+  .empty-wrap {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .empty {
+    font-size: 20px;
+    color: #4d5b68;
+    text-align: center;
+    margin-top: 16px;
+  }
+
+  .footer {
+    height: 112px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .add-btn {
+    width: 386px;
+    height: 68px;
+    border-radius: 34px;
+    align-items: center;
+    justify-content: center;
+    background-color: #333333;
+  }
+
+  .add-btn-text {
+    font-size: 28px;
+    color: #ececec;
+  }
+</style>
