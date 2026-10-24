@@ -1,7 +1,25 @@
 {
   "name": "心情日记",
   "version": "1.0.0",
-  "description": "",
+  "description": "小米快应用（Vela）手表端心情日记：一天可多次记录心情与心里话，首页五列表情网格，周一/月初自动生成上周、上月心情占比回顾。",
+  "keywords": [
+    "quickapp",
+    "vela",
+    "xiaomi",
+    "smartwatch",
+    "mood-tracker",
+    "journal",
+    "aiot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chenxuecong2/mood-diary.git"
+  },
+  "homepage": "https://github.com/chenxuecong2/mood-diary#readme",
+  "bugs": {
+    "url": "https://github.com/chenxuecong2/mood-diary/issues"
+  },
+  "author": "chenxuecong2",
   "engines": {
     "node": ">=8.10"
   },
